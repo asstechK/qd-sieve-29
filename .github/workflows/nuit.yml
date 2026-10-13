@@ -1,0 +1,41 @@
+name: nuit
+
+on:
+  schedule:
+    - cron: "37 23 * * *"
+  workflow_dispatch:
+    inputs:
+      sec:
+        description: "Collecter sans publier"
+        type: boolean
+        default: false
+
+jobs:
+  collecte:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    concurrency:
+      group: nuit
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v7
+      - name: Attente aleatoire
+        if: github.event_name == 'schedule'
+        run: sleep $((RANDOM % 1800))
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - run: npm install --no-audit --no-fund --silent
+      - run: npx playwright install --with-deps chromium > /dev/null
+      - name: Collecte
+        env:
+          SOURCE: ${{ secrets.SOURCE }}
+          TABLES: ${{ secrets.TABLES }}
+          API: ${{ secrets.API }}
+          CLE: ${{ secrets.CLE }}
+        run: |
+          set +e
+          node src/collecte.mjs ${{ inputs.sec && '--sec' || '' }} > journal.txt 2>&1
+          code=$?
+          grep -E '^(::add-mask::|BILAN)' journal.txt
+          exit $code

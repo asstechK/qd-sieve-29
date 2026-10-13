@@ -1,0 +1,13 @@
+{
+  "name": "qd-sieve-29",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "collecte": "node src/collecte.mjs",
+    "liens": "node src/liens.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0"
+  }
+}
