@@ -176,6 +176,18 @@ async function lireLiensActuels() {
   if (!res.ok) return {};
   return (await res.json()).liens || {};
 }
+async function publier(trouves) {
+  if (!PUBLISH || !SECRET || !Object.keys(trouves).length) return;
+  try {
+    const fusion = fusionnerLiens(trouves, await lireLiensActuels());
+    await fetch(`${API}/admin/api/liens`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${SECRET}` },
+      body: JSON.stringify({ liens: fusion })
+    });
+  } catch (err) {
+  }
+}
 async function main() {
   const res = await fetch(`${API}/seances.json`, { headers: { "User-Agent": UA } });
   if (!res.ok) throw new Error(`seances inaccessibles : HTTP ${res.status}`);
@@ -230,6 +242,7 @@ async function main() {
     if (page) {
       const fiche = estFicheDuFilm(page, entree);
       liens[salle.cle + "|" + normalize(salle.ville)] = fiche ? { url: page.url, film: true } : page.url;
+      if (!STRICT) await publier({ [salle.cle + "|" + normalize(salle.ville)]: liens[salle.cle + "|" + normalize(salle.ville)] });
     } else if (STRICT) {
       echecs.push(`${salle.cinema} (${salle.ville}) — film absent de ${site}`);
     } else {
