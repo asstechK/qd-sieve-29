@@ -82,25 +82,31 @@ export async function seancesDeLaVille(page, ville) {
     }
   }, sel.dates);
   const empreinte = () => page.evaluate(({ carte, horaire }) => Array.from(document.querySelectorAll(carte)).map((card) => Array.from(card.querySelectorAll(horaire)).map((el) => el.textContent.trim()).join(",")).join("|"), { carte: sel.carte, horaire: sel.horaire });
+  const ancre = ((await lirePage(adresse("ville", { ville: ville.id })).catch(() => "")).match(/#(\w+=)\d{4}-\d\d-\d\d/) || [])[1];
   const rows = [];
   for (const iso of dates) {
     const avant = await empreinte();
-    const day = parseInt(iso.slice(8, 10), 10);
-    const clicked = await page.evaluate(
-      ({ day: day2, jour }) => {
+    const mois = new Date(iso + "T12:00:00Z").toLocaleDateString("fr-FR", { month: "short", timeZone: "UTC" });
+    const choix = await page.evaluate(
+      ({ jour, num, mois: mois2 }) => {
         const target = Array.from(document.querySelectorAll(jour)).find((el) => {
-          const m = el.textContent.match(/(\d+)/);
-          return m && parseInt(m[1], 10) === day2;
+          const m = el.textContent.match(/(\d+)\s*(\S+)?/);
+          return m && parseInt(m[1], 10) === num && (!m[2] || m[2] === mois2);
         });
-        if (!target || target.classList.contains("disabled")) return false;
+        if (!target) return "absent";
+        if (target.classList.contains("disabled")) return "inactif";
         target.click();
-        return true;
+        return "ok";
       },
-      { day, jour: sel.jour }
+      { jour: sel.jour, num: parseInt(iso.slice(8, 10), 10), mois }
     );
-    if (!clicked) continue;
+    if (choix === "inactif" || (choix === "absent" && !ancre)) continue;
+    if (choix === "absent") {
+      await page.goto("about:blank");
+      await page.goto(adresse("ville", { ville: ville.id }) + "#" + ancre + iso, { timeout: 3e4, waitUntil: "domcontentloaded" });
+    }
     let courante = avant;
-    for (let t = 0; t < 4e3 && courante === avant; t += 250) {
+    for (let t = 0; t < 6e3 && (courante === avant || courante === ""); t += 250) {
       await page.waitForTimeout(250);
       courante = await empreinte();
     }
