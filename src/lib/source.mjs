@@ -81,8 +81,10 @@ export async function seancesDeLaVille(page, ville) {
       return [];
     }
   }, sel.dates);
+  const empreinte = () => page.evaluate(({ carte, horaire }) => Array.from(document.querySelectorAll(carte)).map((card) => Array.from(card.querySelectorAll(horaire)).map((el) => el.textContent.trim()).join(",")).join("|"), { carte: sel.carte, horaire: sel.horaire });
   const rows = [];
   for (const iso of dates) {
+    const avant = await empreinte();
     const day = parseInt(iso.slice(8, 10), 10);
     const clicked = await page.evaluate(
       ({ day: day2, jour }) => {
@@ -97,7 +99,17 @@ export async function seancesDeLaVille(page, ville) {
       { day, jour: sel.jour }
     );
     if (!clicked) continue;
-    await page.waitForTimeout(900);
+    let courante = avant;
+    for (let t = 0; t < 4e3 && courante === avant; t += 250) {
+      await page.waitForTimeout(250);
+      courante = await empreinte();
+    }
+    for (let t = 0; t < 4e3; t += 400) {
+      await page.waitForTimeout(400);
+      const suivante = await empreinte();
+      if (suivante === courante) break;
+      courante = suivante;
+    }
     const cartes = await page.evaluate(({ sel: sel2, param, motifCode }) => {
       const code = new RegExp(`${param}=(${motifCode})`);
       return Array.from(document.querySelectorAll(sel2.carte)).map((card) => {
