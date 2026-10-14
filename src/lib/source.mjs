@@ -10,12 +10,26 @@ function liensDe(html) {
 function decodeEntites(s) {
   return s.replace(/&#0?39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
 }
-async function lirePage(url) {
-  const res = await fetch(url, { headers: { "User-Agent": UA } });
-  if (!res.ok) throw new Error("HTTP " + res.status);
-  return res.text();
+const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+let dernier = 0;
+async function demander(url, init = {}) {
+  for (let essai = 1; ; essai++) {
+    const attente = dernier + 700 + Math.random() * 800 - Date.now();
+    if (attente > 0) await pause(attente);
+    dernier = Date.now();
+    const res = await fetch(url, { ...init, headers: { "User-Agent": UA, ...(init.headers || {}) } });
+    if ((res.status === 403 || res.status === 429) && essai <= 4) {
+      await pause(90000 * essai);
+      continue;
+    }
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    return res;
+  }
 }
-async function departements() {
+async function lirePage(url) {
+  return (await demander(url)).text();
+}
+export async function departements() {
   const html = await lirePage(adresse("seances"));
   const param = new RegExp(`${SOURCE.paramDepartement}=(\\d+)`);
   const trouves = new Set();
@@ -25,7 +39,7 @@ async function departements() {
   }
   return [...trouves];
 }
-async function villesDuDepartement(code) {
+export async function villesDuDepartement(code) {
   const html = await lirePage(adresse("departement", { code }));
   const fin = new RegExp(motif("ville").source + "$");
   const villes = [];
@@ -138,4 +152,21 @@ export async function seancesDeLaVille(page, ville) {
     }
   }
   return rows;
+}
+export async function joursDeLaVille(id) {
+  try {
+    const html = await lirePage(adresse("ville", { ville: id }));
+    const m = html.match(new RegExp(`${SOURCE.selecteurs.dates}="([^"]*)"`));
+    return m ? new Set(JSON.parse(m[1].replace(/&quot;/g, '"'))) : null;
+  } catch (err) {
+    return null;
+  }
+}
+export async function pageDuJour(pres, jour, page) {
+  const res = await demander(adresse("api", { ville: pres, jour, page }), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filters: [] })
+  });
+  return res.json();
 }

@@ -2,13 +2,17 @@ name: nuit
 
 on:
   schedule:
-    - cron: "37 23 * * *"
+    - cron: "0 23 * * 1,2"
   workflow_dispatch:
     inputs:
       sec:
         description: "Collecter sans publier"
         type: boolean
         default: false
+      departements:
+        description: "Codes a collecter (vide : tous)"
+        type: string
+        default: ""
 
 jobs:
   collecte:
@@ -26,13 +30,13 @@ jobs:
         with:
           node-version: "20"
       - run: npm install --no-audit --no-fund --silent
-      - run: npx playwright install --with-deps chromium > /dev/null
       - name: Collecte
         env:
           SOURCE: ${{ secrets.SOURCE }}
           TABLES: ${{ secrets.TABLES }}
           API: ${{ secrets.API }}
           CLE: ${{ secrets.CLE }}
+          DEPARTEMENTS: ${{ inputs.departements }}
         run: |
           set +e
           node src/collecte.mjs ${{ inputs.sec && '--sec' || '' }} > journal.txt 2>&1
