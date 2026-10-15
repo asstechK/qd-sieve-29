@@ -17,8 +17,15 @@ async function demander(url, init = {}) {
     const attente = dernier + 700 + Math.random() * 800 - Date.now();
     if (attente > 0) await pause(attente);
     dernier = Date.now();
-    const res = await fetch(url, { ...init, headers: { "User-Agent": UA, ...(init.headers || {}) } });
-    if ((res.status === 403 || res.status === 429) && essai <= 4) {
+    let res;
+    try {
+      res = await fetch(url, { ...init, headers: { "User-Agent": UA, ...(init.headers || {}) }, signal: AbortSignal.timeout(30000) });
+    } catch (err) {
+      if (essai > 4) throw err;
+      await pause(15000 * essai);
+      continue;
+    }
+    if ((res.status === 403 || res.status === 429 || res.status >= 500) && essai <= 4) {
       await pause(90000 * essai);
       continue;
     }

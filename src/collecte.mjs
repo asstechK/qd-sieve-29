@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { readFileSync, writeFileSync } from "node:fs";
 import { normalize } from "./lib/normalize.mjs";
 import { TABLES, API, CLE, adresse } from "./lib/config.mjs";
 import { departements, villesDuDepartement, joursDeLaVille, pageDuJour } from "./lib/source.mjs";
@@ -8,6 +9,10 @@ const REGIONS = TABLES.regions || {};
 const LIENS = TABLES.liens || {};
 const SEC = process.argv.includes("--sec");
 const LIMITE = (process.env.DEPARTEMENTS || "").split(/[\s,]+/).filter(Boolean);
+const [PART, PARTS] = (process.env.PART || "1/1").split("/").map(Number);
+const argument = (nom) => (process.argv.indexOf(nom) > 0 ? process.argv[process.argv.indexOf(nom) + 1] : null);
+const SORTIE = argument("--sortie");
+const FUSION = process.argv.includes("--fusion") ? process.argv.slice(process.argv.indexOf("--fusion") + 1) : null;
 async function precedentes() {
   try {
     const res = await fetch(`${API}/seances.json?brut`, { headers: { Authorization: `Bearer ${CLE}` } });
@@ -117,18 +122,52 @@ async function departement(dept) {
   }
   return villes;
 }
+async function publier(lignes, anciennes) {
+  for (const s of anciennes) if (s.manuelle && s.date >= aujourdhui()) lignes.push(s);
+  lignes.sort((a, b) => a.date.localeCompare(b.date) || a.heure.localeCompare(b.heure) || a.ville.localeCompare(b.ville));
+  const res = await fetch(`${API}/seances.json`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${CLE}` },
+    body: JSON.stringify(lignes)
+  });
+  if (!res.ok) {
+    console.error("BILAN echec");
+    process.exit(1);
+  }
+  console.log("BILAN ok");
+}
+async function fusion(fichiers) {
+  const vues = new Set();
+  const lignes = [];
+  for (const f of fichiers) {
+    for (const r of JSON.parse(readFileSync(f, "utf8"))) {
+      const key = `${r.date}|${r.heure}|${normalize(r.ville)}|${normalize(r.cinema)}`;
+      if (vues.has(key)) continue;
+      vues.add(key);
+      lignes.push(r);
+    }
+  }
+  if (!lignes.length) {
+    console.error("BILAN echec");
+    process.exit(1);
+  }
+  if (SEC) return console.log("BILAN ok");
+  await publier(lignes, await precedentes());
+}
 async function main() {
+  if (FUSION) return fusion(FUSION);
   let depts = [];
   try {
     depts = await departements();
   } catch (err) {
   }
   if (LIMITE.length) depts = depts.filter((d) => LIMITE.includes(d));
+  depts = depts.filter((d, i) => i % PARTS === PART - 1);
   if (!depts.length) {
     console.error("BILAN echec");
     process.exit(1);
   }
-  const anciennes = SEC ? [] : await precedentes();
+  const anciennes = SEC && !SORTIE ? [] : await precedentes();
   const echecs = [];
   for (const dept of depts) {
     const avant = rows.length;
@@ -162,19 +201,12 @@ async function main() {
     console.error("BILAN echec");
     process.exit(1);
   }
-  if (SEC) return console.log("BILAN ok");
-  for (const s of anciennes) if (s.manuelle && s.date >= aujourdhui()) rows.push(s);
-  rows.sort((a, b) => a.date.localeCompare(b.date) || a.heure.localeCompare(b.heure) || a.ville.localeCompare(b.ville));
-  const res = await fetch(`${API}/seances.json`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${CLE}` },
-    body: JSON.stringify(rows)
-  });
-  if (!res.ok) {
-    console.error("BILAN echec");
-    process.exit(1);
+  if (SORTIE) {
+    writeFileSync(SORTIE, JSON.stringify(rows));
+    return console.log("BILAN ok");
   }
-  console.log("BILAN ok");
+  if (SEC) return console.log("BILAN ok");
+  await publier(rows, anciennes);
 }
 main().catch((err) => {
   console.error("BILAN echec");

@@ -2,7 +2,7 @@ name: nuit
 
 on:
   schedule:
-    - cron: "0 23 * * 1,2"
+    - cron: "30 23 * * 1,2"
   workflow_dispatch:
     inputs:
       sec:
@@ -14,18 +14,23 @@ on:
         type: string
         default: ""
 
+concurrency:
+  group: nuit
+  cancel-in-progress: false
+
 jobs:
   collecte:
     runs-on: ubuntu-latest
-    timeout-minutes: 350
-    concurrency:
-      group: nuit
-      cancel-in-progress: false
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2, 3]
     steps:
       - uses: actions/checkout@v7
       - name: Attente aleatoire
         if: github.event_name == 'schedule'
-        run: sleep $((RANDOM % 1800))
+        run: sleep $((RANDOM % 600))
       - uses: actions/setup-node@v7
         with:
           node-version: "20"
@@ -37,9 +42,40 @@ jobs:
           API: ${{ secrets.API }}
           CLE: ${{ secrets.CLE }}
           DEPARTEMENTS: ${{ inputs.departements }}
+          PART: ${{ matrix.part }}/3
         run: |
           set +e
-          node src/collecte.mjs ${{ inputs.sec && '--sec' || '' }} > journal.txt 2>&1
+          node src/collecte.mjs --sortie part.json > journal.txt 2>&1
+          code=$?
+          grep -E '^(::add-mask::|BILAN)' journal.txt
+          exit $code
+      - uses: actions/upload-artifact@v4
+        with:
+          name: part-${{ matrix.part }}
+          path: part.json
+          retention-days: 1
+
+  envoi:
+    needs: collecte
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+      - uses: actions/download-artifact@v4
+        with:
+          path: parts
+      - name: Envoi
+        env:
+          SOURCE: ${{ secrets.SOURCE }}
+          TABLES: ${{ secrets.TABLES }}
+          API: ${{ secrets.API }}
+          CLE: ${{ secrets.CLE }}
+        run: |
+          set +e
+          node src/collecte.mjs ${{ inputs.sec && '--sec' || '' }} --fusion parts/*/part.json > journal.txt 2>&1
           code=$?
           grep -E '^(::add-mask::|BILAN)' journal.txt
           exit $code
