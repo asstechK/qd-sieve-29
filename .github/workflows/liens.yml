@@ -9,6 +9,10 @@ on:
         description: "Simuler sans rien publier"
         type: boolean
         default: true
+      limite:
+        description: "Nombre de salles (vide : toutes)"
+        type: string
+        default: ""
 
 jobs:
   resoudre:
@@ -33,9 +37,9 @@ jobs:
         run: |
           set +e
           if [ "${{ inputs.dry_run }}" = "true" ]; then
-            node src/liens.mjs > journal.txt 2>&1
+            node src/liens.mjs ${{ inputs.limite && format('--limit {0}', inputs.limite) || '' }} > journal.txt 2>&1
           else
-            node src/liens.mjs --publish > journal.txt 2>&1
+            node src/liens.mjs --publish ${{ inputs.limite && format('--limit {0}', inputs.limite) || '' }} > journal.txt 2>&1
           fi
           code=$?
           grep -E '^(::add-mask::|BILAN)' journal.txt
